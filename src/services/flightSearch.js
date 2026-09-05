@@ -97,15 +97,6 @@ const HUBS = {
   africa: ['ADD', 'NBO', 'JNB', 'CAI'],
 };
 
-const CONTINENT_TO_TIER = {
-  OC: 'oceania',
-  AS: 'asia',
-  EU: 'europe',
-  NA: 'northAmerica',
-  SA: 'southAmerica',
-  AF: 'africa',
-};
-
 function hashString(str) {
   let h = 0;
   for (let i = 0; i < str.length; i += 1) {
@@ -186,8 +177,30 @@ function estimatedBlockMinutes(distanceKm) {
   return Math.round(distanceKm / 8.2 + 75);
 }
 
+/**
+ * Robust check for "is this airport in Papua New Guinea".
+ *
+ * We do NOT rely on a single exact string match against `country` (e.g.
+ * "Papua New Guinea") because airport data sources are inconsistent about
+ * casing, whitespace, abbreviations ("PNG"), or may only populate
+ * `countryCode`. This checks every signal we might have.
+ */
+function isPNG(airport) {
+  if (!airport) return false;
+
+  const code = (airport.countryCode || '').trim().toUpperCase();
+  if (code === 'PG' || code === 'PNG') return true;
+
+  const name = (airport.country || '').trim().toLowerCase();
+  if (name === 'papua new guinea' || name === 'png') return true;
+
+  return false;
+}
+
 function tierFor(from, to, distanceKm) {
-  if (from.country === 'Papua New Guinea' && to.country === 'Papua New Guinea') {
+  // Domestic PNG route — checked first and independently of distance/continent
+  // so it can never be shadowed by the Oceania bucket below.
+  if (isPNG(from) && isPNG(to)) {
     return 'png';
   }
 
@@ -224,6 +237,10 @@ function airlinePoolFor(tier) {
 }
 
 function chooseHub(from, to, tier, rng) {
+  // Domestic PNG flights are always nonstop between the two airports named —
+  // never route a hop through an international hub.
+  if (tier === 'png') return null;
+
   const candidates = (HUBS[tier] || []).filter(
     (code) => code !== from.code && code !== to.code
   );
@@ -261,10 +278,15 @@ function buildLeg({
   const distanceKm = calculateDistanceKm(from, to);
   const directDuration = estimatedBlockMinutes(distanceKm);
 
+  const tier = tierFor(from, to, distanceKm);
+
   let stops = forcedStops;
 
   if (typeof stops !== 'number') {
-    if (distanceKm < 1800) {
+    if (tier === 'png') {
+      // Domestic PNG routes are nonstop.
+      stops = 0;
+    } else if (distanceKm < 1800) {
       stops = rng() > 0.82 ? 1 : 0;
     } else if (distanceKm < 5000) {
       stops = rng() > 0.45 ? 1 : 0;
@@ -273,7 +295,6 @@ function buildLeg({
     }
   }
 
-  const tier = tierFor(from, to, distanceKm);
   const pool = airlinePoolFor(tier);
   const airline = pool[optionIndex % pool.length];
 
@@ -320,9 +341,17 @@ function buildLeg({
 }
 
 function generateMockLeg({ from, to, date, seed }) {
+  const tier = tierFor(from, to, calculateDistanceKm(from, to));
+  const pool = airlinePoolFor(tier);
+
+  // Don't generate more distinct "options" than there are airlines in the
+  // pool for this tier — for PNG domestic that pool only has 2 carriers, so
+  // we cap at 2 instead of always producing 5.
+  const optionCount = Math.min(5, pool.length);
+
   const options = [];
 
-  for (let i = 0; i < 5; i += 1) {
+  for (let i = 0; i < optionCount; i += 1) {
     const rng = seededRandom(seed + i * 7919);
 
     options.push(
