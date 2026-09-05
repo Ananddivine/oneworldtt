@@ -1,0 +1,35 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  color: #16262D;
+}
+
+@keyframes drawRoute {
+  from { stroke-dashoffset: 480; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes fadeInPlane {
+  from { opacity: 0; transform: translate(0, 4px); }
+  to { opacity: 1; transform: translate(0, 0); }
+}
+.route-line {
+  stroke-dasharray: 480;
+  animation: drawRoute 2.1s ease-out forwards;
+}
+.route-plane {
+  opacity: 0;
+  animation: fadeInPlane 0.6s ease-out 1.8s forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .route-line { animation: none; stroke-dashoffset: 0; }
+  .route-plane { animation: none; opacity: 1; }
+}
